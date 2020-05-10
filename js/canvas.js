@@ -68,12 +68,12 @@ function findAdjacentTiles(column, row){
             adjacentArray.push({column: column + 1, row: row});
         }
     }
-    if (row > 0 && column < 18){
+    if (row > 0 && column < 18 && column >= 0){
         if (map[column][row - 1] != 1){
             adjacentArray.push({column: column, row: row - 1});
         }
     }
-    if (row < 20){
+    if (row < 20 && column < 18 && column >= 0){
         if (map[column][row + 1] != 1){
             adjacentArray.push({column: column, row: row + 1});
         }
@@ -245,7 +245,7 @@ class Ghost {
     constructor(x, y){
         this.x = x;
         this.y = y;
-        this.velocity = 3.5;
+        this.velocity = 2;
         this.direction = 'none';
         this.radius = canvas.height/44;
     }
@@ -277,29 +277,39 @@ class Ghost {
     }
 
 
-    //TO BE THOUGHT AND IMPLEMENTED
-    findPath(target, lastTile = {column: -1, row: -1}){
+    findPath(target, lastTile = {column: -1, row: -1}, history = []){
 
-        let myTile = coordsToTile(this.x, this.y);
-        let adjTiles = findAdjacentTiles(target.column, target.row);
+        if (target.column < 18 && target.column > 0){
+            let myTile = coordsToTile(this.x, this.y);
+            let adjTiles = findAdjacentTiles(target.column, target.row);
 
-        let minDistanceIndex = 0;
-        let minDistance = 1000;
-        let currentDistance = 0;
-        for (let i = 0; i < adjTiles.length; i++){
-            if (adjTiles[i].column == myTile.column && adjTiles[i].row == myTile.row){
-                this.moveToTile(myTile, target);
-                return 0;
-            }
-            else if ((adjTiles[i].column != lastTile.column || adjTiles[i].row != lastTile.row)){
-                currentDistance = Math.abs(myTile.column - adjTiles[i].column) + Math.abs(myTile.row - adjTiles[i].row);
-                if (currentDistance < minDistance){
-                    minDistance = currentDistance;
-                    minDistanceIndex = i;
+            let minDistanceIndex = 0;
+            let minDistance = 1000;
+            let currentDistance = 0;
+
+            for (let tile of history){
+                if (target.column == tile.column && target.row == tile.row || target.column > 18 || target.column < 0){
+                    this.moveToTile(myTile, adjTiles[0]);
+                    return 0;
                 }
             }
+
+            for (let i = 0; i < adjTiles.length; i++){
+                if (adjTiles[i].column == myTile.column && adjTiles[i].row == myTile.row){
+                    this.moveToTile(myTile, target);
+                    return 0;
+                }
+                else if ((adjTiles[i].column != lastTile.column || adjTiles[i].row != lastTile.row)){
+                    currentDistance = Math.abs(myTile.column - adjTiles[i].column) + Math.abs(myTile.row - adjTiles[i].row);
+                    if (currentDistance < minDistance){
+                        minDistance = currentDistance;
+                        minDistanceIndex = i;
+                    }
+                }
+            }
+            history.push(target);
+            this.findPath(adjTiles[minDistanceIndex], target, history);
         }
-        this.findPath(adjTiles[minDistanceIndex], target);
     }
 
     update(){
@@ -351,7 +361,12 @@ function populateFoodArray(){
 const foodArray = populateFoodArray();
 
 
-const ghost = new Ghost(tileToCoords(9, 10).x, tileToCoords(9, 10).y);
+const ghostArray = [];
+
+ghostArray.push(new Ghost(tileToCoords(8, 9).x, tileToCoords(8, 9).y));
+ghostArray.push(new Ghost(tileToCoords(10, 9).x, tileToCoords(10, 9).y));
+ghostArray.push(new Ghost(tileToCoords(8, 11).x, tileToCoords(8, 11).y));
+ghostArray.push(new Ghost(tileToCoords(10, 11).x, tileToCoords(10, 11).y));
 
 
 //This to be moved into the player class
@@ -379,12 +394,14 @@ function animate(){
     requestAnimationFrame(animate);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     printMap();
-    ghost.update();
-    pacman.update();
-   
     for (food of foodArray){
         food.update(pacman.x, pacman.y);
     }
+    for (let ghost of ghostArray){
+        ghost.update();
+    }
+    pacman.update();
+
 }
 
 document.addEventListener('keydown', (e)=>(move(e)));
