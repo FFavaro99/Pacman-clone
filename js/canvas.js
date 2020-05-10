@@ -5,6 +5,8 @@ canvas.width = 750;
 canvas.height = 750;
 const ctx = canvas.getContext('2d');
 
+let vulnerable = false;
+
 
 //Generating map here, by hardcoding a quarter of it and repeating it 4 times
 
@@ -52,6 +54,31 @@ function drawMapTile(column, row){
     let y = height*row;
     ctx.fillStyle = 'blue';
     ctx.fillRect(x, y, width, height);
+}
+
+function findAdjacentTiles(column, row){
+    const adjacentArray = [];
+    if (column > 0){
+        if (map[column - 1][row] != 1){
+            adjacentArray.push({column: column - 1, row: row});
+        }
+    }
+    if (column < 18 && column != 0){
+        if (map[column + 1][row] != 1){
+            adjacentArray.push({column: column + 1, row: row});
+        }
+    }
+    if (row > 0 && column < 18){
+        if (map[column][row - 1] != 1){
+            adjacentArray.push({column: column, row: row - 1});
+        }
+    }
+    if (row < 20){
+        if (map[column][row + 1] != 1){
+            adjacentArray.push({column: column, row: row + 1});
+        }
+    }
+    return adjacentArray;
 }
 
 
@@ -157,6 +184,9 @@ class Player {
     }
 }
 
+const pacman = new Player();
+
+
 class Food {
     constructor(x, y){
         this.x = x;
@@ -173,8 +203,36 @@ class Food {
     }
 
     update(x, y){
-        if (Math.sqrt(Math.abs(x - this.x)*Math.abs(x - this.x) + Math.abs(y - this.y)*Math.abs(y - this.y)) < canvas.width/44){
+        if (Math.sqrt(Math.abs(x - this.x)*Math.abs(x - this.x) + Math.abs(y - this.y)*Math.abs(y - this.y)) < canvas.width/44 & !this.eaten){
             this.eaten = true;
+        }
+        if (!this.eaten){
+            this.draw();
+        }
+    }
+
+}
+
+class SpecialFood {
+    constructor(x, y){
+        this.x = x;
+        this.y = y;
+        this.eaten = false;
+    }
+
+    draw(){
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 8, 0, Math.PI*2, false);
+        ctx.fillStyle = 'yellow';
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    update(x, y){
+        if (Math.sqrt(Math.abs(x - this.x)*Math.abs(x - this.x) + Math.abs(y - this.y)*Math.abs(y - this.y)) < canvas.width/44 && !this.eaten){
+            this.eaten = true;
+            vulnerable = true;
+            setTimeout(()=>{vulnerable = false; console.log(vulnerable)}, 3000);
         }
         if (!this.eaten){
             this.draw();
@@ -187,30 +245,65 @@ class Ghost {
     constructor(x, y){
         this.x = x;
         this.y = y;
-        this.vulnerable = false;
-        this.velocity = 4;
+        this.velocity = 3.5;
         this.direction = 'none';
+        this.radius = canvas.height/44;
     }
 
     draw(){
         ctx.beginPath();
-        ctx.arc(this.x, this.y, 30, 0, Math.PI*2, false);
-        if (!this.vulnerable)
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2, false);
+        if (!vulnerable)
             ctx.fillStyle = 'red';
-        else ctx.fillStyle = 'blue';
+        else ctx.fillStyle = 'azure';
         ctx.fill();
         ctx.stroke();
     }
 
 
+    moveToTile(myTile, tile2){
+        if (myTile.column < tile2.column){
+            this.direction = 'right';
+        }
+        else if (myTile.column > tile2.column){
+            this.direction = 'left';
+        }
+        else if (myTile.row < tile2.row){
+            this.direction = 'down';
+        }
+        else if (myTile.row > tile2.row){
+            this.direction = 'up';
+        }
+    }
+
+
     //TO BE THOUGHT AND IMPLEMENTED
-    findPath(x, y, lastTile = coordsToTile(x, y)){
-        let pacTile = coordsToTile(x, y);
+    findPath(target, lastTile = {column: -1, row: -1}){
+
         let myTile = coordsToTile(this.x, this.y);
+        let adjTiles = findAdjacentTiles(target.column, target.row);
+
+        let minDistanceIndex = 0;
+        let minDistance = 1000;
+        let currentDistance = 0;
+        for (let i = 0; i < adjTiles.length; i++){
+            if (adjTiles[i].column == myTile.column && adjTiles[i].row == myTile.row){
+                this.moveToTile(myTile, target);
+                return 0;
+            }
+            else if ((adjTiles[i].column != lastTile.column || adjTiles[i].row != lastTile.row)){
+                currentDistance = Math.abs(myTile.column - adjTiles[i].column) + Math.abs(myTile.row - adjTiles[i].row);
+                if (currentDistance < minDistance){
+                    minDistance = currentDistance;
+                    minDistanceIndex = i;
+                }
+            }
+        }
+        this.findPath(adjTiles[minDistanceIndex], target);
     }
 
     update(){
-
+        this.findPath(coordsToTile(pacman.x, pacman.y));
         switch (this.direction){
             case 'right':
                 this.x += this.velocity;
@@ -218,10 +311,10 @@ class Ghost {
             case 'left':
                 this.x -= this.velocity;
                 break;
-            case 'up':
+            case 'down':
                 this.y += this.velocity;
                 break;
-            case 'down':
+            case 'up':
                 this.y -= this.velocity;
                 break;
         }
@@ -246,6 +339,10 @@ function populateFoodArray(){
             if (map[column][row] == 0){
                 foodArray.push(new Food(column*width + width/2, row*height + height/2));
             }
+            else if (map[column][row] == 3){
+                let coords = tileToCoords(column, row);
+                foodArray.push(new SpecialFood(coords.x, coords.y));
+            }
         }
     }
     return foodArray;
@@ -254,8 +351,8 @@ function populateFoodArray(){
 const foodArray = populateFoodArray();
 
 
+const ghost = new Ghost(tileToCoords(9, 10).x, tileToCoords(9, 10).y);
 
-const pacman = new Player();
 
 //This to be moved into the player class
 function move(e){
@@ -282,7 +379,9 @@ function animate(){
     requestAnimationFrame(animate);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     printMap();
+    ghost.update();
     pacman.update();
+   
     for (food of foodArray){
         food.update(pacman.x, pacman.y);
     }
@@ -292,7 +391,6 @@ document.addEventListener('keydown', (e)=>(move(e)));
 canvas.addEventListener('click', (e)=>{
     let x = e.x - canvas.getBoundingClientRect().left;
     let y = e.y - canvas.getBoundingClientRect().top;
-
     console.log(coordsToTile(x, y));
 })
 animate();
