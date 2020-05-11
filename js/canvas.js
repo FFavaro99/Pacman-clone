@@ -6,6 +6,7 @@ canvas.height = 750;
 const ctx = canvas.getContext('2d');
 
 let vulnerable = false;
+let beginning = true;
 
 
 //Generating map here, by hardcoding a quarter of it and repeating it 4 times
@@ -112,6 +113,7 @@ class Player {
         this.velocity = 3.5;
         this.direction = 'none';
         this.radius = canvas.height/44
+        this.lives = 3;
     }
 
     draw(){
@@ -151,6 +153,25 @@ class Player {
                 break;
         }
     }
+
+    move(e){
+        let keyCode = e.keyCode;
+        switch(keyCode){
+            case 39:
+                pacman.direction = 'right';
+                break;
+            case 37:
+                pacman.direction = 'left';
+                break;
+            case 40:
+                pacman.direction = 'up';
+                break;
+            case 38:
+                pacman.direction = 'down';
+                break;
+        }
+    }
+    
 
     update(){
         this.checkCollision();
@@ -232,7 +253,7 @@ class SpecialFood {
         if (Math.sqrt(Math.abs(x - this.x)*Math.abs(x - this.x) + Math.abs(y - this.y)*Math.abs(y - this.y)) < canvas.width/44 && !this.eaten){
             this.eaten = true;
             vulnerable = true;
-            setTimeout(()=>{vulnerable = false; console.log(vulnerable)}, 3000);
+            setTimeout(()=>{vulnerable = false; console.log(vulnerable)}, 5000);
         }
         if (!this.eaten){
             this.draw();
@@ -245,15 +266,18 @@ class Ghost {
     constructor(x, y){
         this.x = x;
         this.y = y;
-        this.velocity = 2;
+        this.velocity = 2.8;
         this.direction = 'none';
         this.radius = canvas.height/44;
+        this.eaten = true;
+        this.originalX = x;
+        this.originalY = y;
     }
 
     draw(){
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2, false);
-        if (!vulnerable)
+        if (!vulnerable && !this.eaten)
             ctx.fillStyle = 'red';
         else ctx.fillStyle = 'azure';
         ctx.fill();
@@ -279,7 +303,7 @@ class Ghost {
 
     findPath(target, lastTile = {column: -1, row: -1}, history = []){
 
-        if (target.column < 18 && target.column > 0){
+        if (target.column < 18 && target.column > 0 && !vulnerable){
             let myTile = coordsToTile(this.x, this.y);
             let adjTiles = findAdjacentTiles(target.column, target.row);
 
@@ -289,7 +313,7 @@ class Ghost {
 
             for (let tile of history){
                 if (target.column == tile.column && target.row == tile.row || target.column > 18 || target.column < 0){
-                    this.moveToTile(myTile, adjTiles[0]);
+                    this.moveToTile(myTile, findAdjacentTiles(myTile.column, myTile.row)[0]); //adjTiles[0]); was clearly incorrect
                     return 0;
                 }
             }
@@ -310,10 +334,17 @@ class Ghost {
             history.push(target);
             this.findPath(adjTiles[minDistanceIndex], target, history);
         }
+        else {
+            this.direction = 'none';
+        }
     }
 
     update(){
         this.findPath(coordsToTile(pacman.x, pacman.y));
+
+        if (this.eaten){
+            this.direction = 'none';
+        }
         switch (this.direction){
             case 'right':
                 this.x += this.velocity;
@@ -332,8 +363,6 @@ class Ghost {
         this.draw();
 
     }
-
-
 }
 
 
@@ -368,30 +397,36 @@ ghostArray.push(new Ghost(tileToCoords(10, 9).x, tileToCoords(10, 9).y));
 ghostArray.push(new Ghost(tileToCoords(8, 11).x, tileToCoords(8, 11).y));
 ghostArray.push(new Ghost(tileToCoords(10, 11).x, tileToCoords(10, 11).y));
 
-
-//This to be moved into the player class
-function move(e){
-    let keyCode = e.keyCode;
-    switch(keyCode){
-        case 39:
-            pacman.direction = 'right';
-            break;
-        case 37:
-            pacman.direction = 'left';
-            break;
-        case 40:
-            pacman.direction = 'up';
-            break;
-        case 38:
-            pacman.direction = 'down';
-            break;
+function contact(){
+    let ghostTile;
+    let pacTile = coordsToTile(pacman.x, pacman.y);
+    for (let ghost of ghostArray){
+        ghostTile = coordsToTile(ghost.x, ghost.y);
+        if (ghostTile.column == pacTile.column && ghostTile.row == pacTile.row){
+            if (vulnerable){
+                ghost.x = ghost.originalX;
+                ghost.y = ghost.originalY;
+                ghost.eaten = true;
+                setTimeout(()=> ghost.eaten = false, 8000);
+            }
+            else {
+                let coords = tileToCoords(9, 16);
+                pacman.x = coords.x;
+                pacman.y = coords.y;
+            }
+        }
     }
 }
 
-
-
 function animate(){
+    if (beginning){
+        biginning = false;
+        for (let ghost of ghostArray){
+            setTimeout(()=>ghost.eaten = false, 2000);
+        }
+    }
     requestAnimationFrame(animate);
+    contact();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     printMap();
     for (food of foodArray){
@@ -404,7 +439,7 @@ function animate(){
 
 }
 
-document.addEventListener('keydown', (e)=>(move(e)));
+document.addEventListener('keydown', (e)=>(pacman.move(e)));
 canvas.addEventListener('click', (e)=>{
     let x = e.x - canvas.getBoundingClientRect().left;
     let y = e.y - canvas.getBoundingClientRect().top;
